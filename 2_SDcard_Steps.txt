@@ -1,0 +1,78 @@
+############################  Partitioning  ############################
+sudo dmesg | tail   #Note down name of SDCard device file
+export SDCARD=/dev/sdX  #Replace sdX with correct name.
+sudo umount ${SDCARD}1  #Ignore if there is error
+sudo dd if=/dev/zero of=${SDCARD} bs=1M count=10
+sudo sync
+sudo  parted -s $SDCARD mklabel msdos
+sudo  parted -s $SDCARD unit MB mkpart primary ext4 -- 4 100%
+sudo parted -s $SDCARD set 1 boot on
+sudo parted -s $SDCARD print    ##Make sure there is single partion starting from 4mb till end and has flag - 'boot'
+sudo mkfs.ext4 -L rootfs -O ^metadata_csum,^64bit ${SDCARD}1
+sudo sync
+##eject and insert sdcard reader
+#####################################################################
+
+
+
+##############################  ROOTFS  ##############################
+cd rootfs
+tar xJf debian-8.7-minimal-armhf-2017-03-02.tar.xz 
+sudo tar xfvp debian-8.7-minimal-armhf-2017-03-02/armhf-rootfs-debian-jessie.tar -C /media/sunbeam/rootfs/
+sudo chown root:root /media/sunbeam/rootfs/
+sudo chmod 755 /media/sunbeam/rootfs/
+sudo sh -c "echo '/dev/mmcblk0p1  /  auto  errors=remount-ro  0  1' >> /media/sunbeam/rootfs/etc/fstab"
+sudo sync
+cd ..
+#####################################################################
+
+
+
+############################## KERNEL ##############################
+###Official
+cd kernel
+sudo cp -v zImage /media/sunbeam/rootfs/boot/vmlinuz-4.4.61
+sudo mkdir -p /media/sunbeam/rootfs/boot/dtbs/4.4.61/
+sudo cp dtbs/* /media/sunbeam/rootfs/boot/dtbs/4.4.61/
+sudo cp -R my_modules/lib/* /media/sunbeam/rootfs/lib/
+sudo sh -c "echo 'uname_r=4.4.61' >> /media/sunbeam/rootfs/boot/uEnv.txt"
+sudo sh -c "echo 'dtb=am335x-boneblack-overlay.dtb' >> /media/sunbeam/rootfs/boot/uEnv.txt"
+sudo sync
+cd ..
+#####################################################################
+
+
+
+############################## UBOOT ##############################
+cd bootloader
+sudo dd if=./MLO of=${SDCARD} count=1 seek=1 bs=128k
+sudo dd if=./u-boot.img of=${SDCARD} count=2 seek=1 bs=384k
+sudo sync
+############################# uEnv.txt #############################
+Create uEnv.txt file at /media/sunbeam/rootfs/uEnv.txt with following content
+----------------------------------------------------------------------
+loadaddr=0x82000000
+fdtaddr=0x88000000
+rdaddr=0x88080000
+  
+initrd_high=0xffffffff
+fdt_high=0xffffffff
+  
+#for single partitions:
+mmcroot=/dev/mmcblk0p1
+  
+loadximage=load mmc 0:1 ${loadaddr} /boot/vmlinuz-${uname_r}
+loadxfdt=load mmc 0:1 ${fdtaddr} /boot/dtbs/${uname_r}/${fdtfile}
+loadxrd=load mmc 0:1 ${rdaddr} /boot/initrd.img-${uname_r}; setenv rdsize ${filesize}
+loaduEnvtxt=load mmc 0:1 ${loadaddr} /boot/uEnv.txt ; env import -t ${loadaddr} ${filesize};
+loadall=run loaduEnvtxt; run loadximage; run loadxfdt;
+  
+mmcargs=setenv bootargs console=tty0 console=${console} ${optargs} ${cape_disable} ${cape_enable} root=${mmcroot} rootfstype=${mmcrootfstype} ${cmdline}
+  
+uenvcmd=run loadall; run mmcargs; bootz ${loadaddr} - ${fdtaddr};
+----------------------------------------------------------------------
+sudo sync
+sudo umount ${SDCARD}1
+cd ..
+###Eject sdcard
+#####################################################################

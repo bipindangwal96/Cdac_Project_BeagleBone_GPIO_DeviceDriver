@@ -1,0 +1,63 @@
+####Create /home/sunbeam/beaglebone directory. Copy everything in that folder only.
+cd /home/sunbeam/beaglebone
+
+
+######################################  TOOLCHAIN  ######################################
+####Linaro
+cd toolchain
+tar xvJf gcc-linaro-5.4.1-2017.01-x86_64_arm-linux-gnueabihf.tar.xz 2>&1 | tee 11_extract_toolchain.log
+export CC=/home/sunbeam/beaglebone/toolchain/gcc-linaro-5.4.1-2017.01-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
+echo $CC    ##Confirm that variable is set correctly
+cd ..
+###########################################################################################
+
+
+
+######################################  BOOTLOADER  #######################################
+cd bootloader
+rm -rf u-boot-2017.03
+unzip u-boot-2017.03.zip 2>&1 | tee 21_extract_uboot.log
+cp 0001-am335x_evm-uEnv.txt-bootz-n-fixes.patch 0002-U-Boot-BeagleBone-Cape-Manager.patch u-boot-2017.03/
+cd u-boot-2017.03
+patch -p1 < 0001-am335x_evm-uEnv.txt-bootz-n-fixes.patch
+patch -p1 < 0002-U-Boot-BeagleBone-Cape-Manager.patch
+make ubootversion   ##OR check Makefile to find out version
+make distclean  V=1  ##Clean up everything
+vim README   ##Get idea about uboot
+ls configs   ##Check which SOCs are supported
+make ARCH=arm CROSS_COMPILE=${CC} am335x_boneblack_defconfig  V=1   ##Configure for BeagleboneBlack
+make ARCH=arm CROSS_COMPILE=${CC} 2>&1  | tee ../22_make_uboot.log     ##Make all
+ls -ltr    ##Check what files created. Make sure MLO and u-boot.img are there.
+mv MLO ..
+mv u-boot.img ..
+cd ../..
+###########################################################################################
+
+
+
+########################################  KERNEL  ########################################
+cd kernel
+rm -rf linux-4.4
+unzip linux-4.4.zip 2>&1 | tee 31_extract_kernel.log
+cd linux-4.4
+make kernelversion  ##OR check Makefile to find out version
+make help
+make distclean  V=1   ##Clean up everything
+ls arch/arm/configs/
+#make ARCH=arm bb.org_defconfig V=1
+#make menuconfig   ##Check processor type. It is x86
+make ARCH=arm bb.org_defconfig V=1    ##Configure for Beaglebone
+make ARCH=arm CROSS_COMPILE=${CC} menuconfig  ##Check processor type. It is ARM
+make ARCH=arm CROSS_COMPILE=${CC} zImage 2>&1 | tee ../32_make_zImage.log  ##Make kernel. Add -j 6 to speed up
+make ARCH=arm CROSS_COMPILE=${CC} modules 2>&1 | tee ../33_make_modules.log  ##Make modules and firmware. Add -j 6 to speed up
+make ARCH=arm CROSS_COMPILE=${CC} dtbs 2>&1 | tee ../34_make_dtbs.log  ##Make device tree blobs
+mkdir my_modules
+make ARCH=arm CROSS_COMPILE=${CC} modules_install INSTALL_MOD_PATH=./my_modules 2>&1 | tee ../35_modules_install.log
+make ARCH=arm CROSS_COMPILE=${CC} firmware_install INSTALL_MOD_PATH=./my_modules | tee ../36_firmware_install.log
+mv arch/arm/boot/zImage ..
+mv my_modules ..
+mkdir ../dtbs
+mv arch/arm/boot/dts/*.dtb ../dtbs/
+cd ../..
+###########################################################################################
+
